@@ -272,7 +272,7 @@ func main() {
 
 	// If specified service mode, run program as a service, and listen port
 	if *service {
-		ticker := time.NewTicker(time.Second * 10)
+		ticker := time.NewTicker(time.Second * 30)
 
 		// Each 30 seconds
 		go func() {
