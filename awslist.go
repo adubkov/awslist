@@ -258,6 +258,7 @@ var output_buffer []string
 var screen_buffer []string
 var service *bool
 var port *int
+var interval *int
 var counter int
 var wg sync.WaitGroup
 
@@ -265,6 +266,7 @@ func main() {
 	// Parse arguments
 	port = flag.Int("port", 8080, "Listen port")
 	service = flag.Bool("service", false, "Run as service")
+	interval = flag.Int("interval", 30, "Interval to pool data")
 	flag.Parse()
 
 	// Get list of instances
@@ -272,7 +274,7 @@ func main() {
 
 	// If specified service mode, run program as a service, and listen port
 	if *service {
-		ticker := time.NewTicker(time.Second * 30)
+		ticker := time.NewTicker(time.Second * time.Duration(*interval))
 
 		// Each 30 seconds
 		go func() {
