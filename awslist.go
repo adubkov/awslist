@@ -19,12 +19,20 @@ import (
 
 var (
 	// @readonly
-	LoadProfilesList = awserr.New("LoadProfilesList", "failed to load profiles list from credentials file", nil)
+	LoadProfilesList     = awserr.New("LoadProfilesList", "failed to load profiles list from credentials file", nil)
+	rootHandlerMsg       = "[INFO][%s]: %s %s request from %s. %d instances was returned.\n"
+	defaultRegion        = "us-west-1"
+	awsErrError          = "[ERROR] %+v %+v %+v"
+	awsErrRequestFailure = "[ERROR] %+v %+v %+v %+v"
+	runHttpMsg           = "[INFO] Runing http server on port: %d"
+	portMsg              = "Listen port"
+	serviceMsg           = "Run as service"
+	intervalMsg          = "Interval to pool data in seconds"
 )
 
 // AWSList provide interface to print list of instances in aws account
 type AWSList struct {
-	Connection *ec2.EC2
+	EC2 *ec2.EC2
 	// ec2 AWS region to connect
 	Region string
 	// AWS account name
@@ -39,9 +47,9 @@ func NewAWSList(profile string, region ...string) *AWSList {
 	filename := filepath.Join(os.Getenv("HOME"), ".aws", "config")
 	creds := credentials.NewSharedCredentials(filename, profile)
 
-	// If regions is not specified, connect to default one - us-west-1
+	// If region is not specified, connect to default one - us-west-1
 	if region == nil {
-		region = []string{"us-west-1"}
+		region = []string{defaultRegion}
 	}
 
 	// If profile name specified, we extract account name from it.
@@ -50,7 +58,7 @@ func NewAWSList(profile string, region ...string) *AWSList {
 	}
 
 	return &AWSList{
-		Connection: ec2.New(
+		EC2: ec2.New(
 			&aws.Config{
 				Credentials: creds,
 				Region:      region[0],
@@ -86,12 +94,12 @@ func (a *AWSList) ListRegions() ([]string, error) {
 	}
 
 	// Get aws regions
-	res, err := a.Connection.DescribeRegions(params)
+	res, err := a.EC2.DescribeRegions(params)
 	if err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {
-			log.Printf("[ERROR] %+v %+v %+v", awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
+			log.Printf(awsErrError, awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
 			if reqErr, ok := err.(awserr.RequestFailure); ok {
-				log.Printf("[ERROR] %+v %+v %+v %+v", reqErr.Code(), reqErr.Message(), reqErr.StatusCode(), reqErr.RequestID())
+				log.Printf(awsErrRequestFailure, reqErr.Code(), reqErr.Message(), reqErr.StatusCode(), reqErr.RequestID())
 			}
 		} else {
 			log.Printf(err.Error())
@@ -100,7 +108,7 @@ func (a *AWSList) ListRegions() ([]string, error) {
 	}
 
 	var regions []string
-	// Extract regions name from result and fill regions slise with them
+	// Extract regions name from result and fill regions slice with them
 	for _, region := range res.Regions {
 		regions = append(regions, *region.RegionName)
 	}
@@ -108,7 +116,7 @@ func (a *AWSList) ListRegions() ([]string, error) {
 	return regions, nil
 }
 
-// ListInstances print list of instalces in format:
+// ListInstances print list of instances in a format:
 // {id},{name},{private_ip},{instance_size},{public_ip},{region},{account}
 func (a *AWSList) ListInstances(token string) {
 	defer wg.Done()
@@ -132,12 +140,12 @@ func (a *AWSList) ListInstances(token string) {
 	}
 
 	// Get list of ec2 instances
-	res, err := a.Connection.DescribeInstances(params)
+	res, err := a.EC2.DescribeInstances(params)
 	if err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {
-			log.Printf("[ERROR] %s %s %s", awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
+			log.Printf(awsErrError, awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
 			if reqErr, ok := err.(awserr.RequestFailure); ok {
-				log.Printf("[ERROR] %s %s %s %s", reqErr.Code(), reqErr.Message(), reqErr.StatusCode(), reqErr.RequestID())
+				log.Printf(awsErrRequestFailure, reqErr.Code(), reqErr.Message(), reqErr.StatusCode(), reqErr.RequestID())
 			}
 		} else {
 			log.Printf(err.Error())
@@ -229,18 +237,14 @@ func getInstances() {
 	wg.Wait()
 
 	// Resize and fill screen buffer with output data
-	screen_buffer = make([]string, len(output_buffer))//, (cap(output_buffer)+1)*2)
+	screen_buffer = make([]string, len(output_buffer), (cap(output_buffer)+1)*2)
 	copy(screen_buffer, output_buffer)
 }
 
 // Root handler return screen buffer as a respond
 func rootHandler(res http.ResponseWriter, req *http.Request) {
-    log.Printf("[INFO][%s]: %s %s request from %s. %d instances was returned.\n",
-        req.Host,
-        req.Method,
-        req.URL,
-        req.RemoteAddr,
-        len(screen_buffer))
+	log.Printf(rootHandlerMsg, req.Host, req.Method, req.URL, req.RemoteAddr,
+		len(screen_buffer))
 	statusCode := 200
 	res.WriteHeader(statusCode)
 	fmt.Fprintf(res, strings.Join(screen_buffer, "\n"))
@@ -249,7 +253,7 @@ func rootHandler(res http.ResponseWriter, req *http.Request) {
 // runHttpServer runs http listener on specific port
 func runHttpServer(port int) {
 	http.HandleFunc("/", rootHandler)
-	log.Printf("[INFO] Runing http server on port: %d", port)
+	log.Printf(runHttpMsg, port)
 	sockaddr := fmt.Sprintf(":%d", port)
 	log.Fatal(http.ListenAndServe(sockaddr, nil))
 }
@@ -264,9 +268,9 @@ var wg sync.WaitGroup
 
 func main() {
 	// Parse arguments
-	port = flag.Int("port", 8080, "Listen port")
-	service = flag.Bool("service", false, "Run as service")
-	interval = flag.Int("interval", 30, "Interval to pool data")
+	port = flag.Int("port", 8080, portMsg)
+	service = flag.Bool("service", false, serviceMsg)
+	interval = flag.Int("interval", 30, intervalMsg)
 	flag.Parse()
 
 	// Get list of instances
@@ -276,7 +280,7 @@ func main() {
 	if *service {
 		ticker := time.NewTicker(time.Second * time.Duration(*interval))
 
-		// Each 30 seconds
+		// Each 30 seconds (by default)
 		go func() {
 			for range ticker.C {
 				// Get list of all instances
