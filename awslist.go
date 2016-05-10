@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/vaughan0/go-ini"
 	"log"
@@ -49,7 +50,7 @@ func NewAWSList(profile string, region ...string) *AWSList {
 
 	// If region is not specified, connect to default one - us-west-1
 	if region == nil {
-		region = []string{defaultRegion}
+		region = append(region, defaultRegion)
 	}
 
 	// If profile name specified, we extract account name from it.
@@ -57,12 +58,13 @@ func NewAWSList(profile string, region ...string) *AWSList {
 		profile = profile[8:]
 	}
 
+	config := aws.Config{
+		Region:      aws.String(region[0]),
+		Credentials: creds,
+	}
+
 	return &AWSList{
-		EC2: ec2.New(
-			&aws.Config{
-				Credentials: creds,
-				Region:      region[0],
-			}),
+		EC2:      ec2.New(session.New(), &config),
 		Region:   region[0],
 		Account:  profile,
 		Filename: filename,
@@ -90,7 +92,7 @@ func (a *AWSList) ListProfiles() ([]string, error) {
 func (a *AWSList) ListRegions() ([]string, error) {
 	// Prepare request
 	params := &ec2.DescribeRegionsInput{
-		DryRun: aws.Boolean(false),
+		DryRun: aws.Bool(false),
 	}
 
 	// Get aws regions
@@ -122,7 +124,7 @@ func (a *AWSList) ListInstances(token string) {
 	defer wg.Done()
 	// Prepare request
 	params := &ec2.DescribeInstancesInput{
-		DryRun: aws.Boolean(false),
+		DryRun: aws.Bool(false),
 		Filters: []*ec2.Filter{
 			{
 				// Return only "running" and "pending" instances
@@ -134,7 +136,7 @@ func (a *AWSList) ListInstances(token string) {
 			},
 		},
 		// Maximum count instances on one result page
-		MaxResults: aws.Long(1000),
+		MaxResults: aws.Int64(1000),
 		// Next page token
 		NextToken: aws.String(token),
 	}
@@ -165,11 +167,11 @@ func (a *AWSList) ListInstances(token string) {
 			}
 
 			instance_string := []*string{
-				instance.InstanceID,
+				instance.InstanceId,
 				&name,
-				instance.PrivateIPAddress,
+				instance.PrivateIpAddress,
 				instance.InstanceType,
-				instance.PublicIPAddress,
+				instance.PublicIpAddress,
 				&a.Region,
 				&a.Account,
 			}
