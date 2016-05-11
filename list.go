@@ -4,104 +4,53 @@ import (
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"github.com/vaughan0/go-ini"
 	"log"
-	"os"
-	"path/filepath"
 	"strings"
 )
 
 var (
 	// @readonly
-	LoadProfilesList     = awserr.New("LoadProfilesList", "failed to load profiles list from credentials file", nil)
 	defaultRegion        = "us-west-1"
 	awsErrError          = "[ERROR] %+v %+v %+v"
 	awsErrRequestFailure = "[ERROR] %+v %+v %+v %+v"
 )
 
-type Profile struct {
-	Name string
-	//Credentials *credentials.Credentials
-	Region string
-}
-
 type EC2List struct {
-	Connection *ec2.EC2
-	Region     string
-	Profile    Profile
+	EC2     *ec2.EC2
+	Profile *Profile
+	Region  string
 }
 
-// ListProfiles return list of aws profiles from credentials file
-func ListProfiles() ([]string, error) {
-	filename := filepath.Join(os.Getenv("HOME"), ".aws", "config")
-
-	// Parse credentials file
-	config, err := ini.LoadFile(filename)
-	if err != nil {
-		return []string{}, LoadProfilesList
-	}
-
-	// Fill profiles slice with list of profiles
-	profiles := []string{}
-	for profile := range config {
-		profiles = append(profiles, profile)
-	}
-
-	return profiles, nil
-}
-
-// AWSList provide interface to print list of instances in aws account
-type AWSList struct {
-	EC2 *ec2.EC2
-	// ec2 AWS region to connect
-	Region string
-	// AWS account name
-	Account string
-	// Path to credentials file
-	Filename string
-}
-
-// NewAWSList returns a pointer to a new AWSList object
-func NewAWSList(profile, region string) *AWSList {
-	// Load aws credentials from ~/.aws/config file
-	filename := filepath.Join(os.Getenv("HOME"), ".aws", "config")
-	creds := credentials.NewSharedCredentials(filename, profile)
-
+// Returns a pointer to a new EC2List object
+func NewEC2List(profile *Profile, region string) *EC2List {
 	// If region is not specified, connect to default one - us-west-1
 	if region == "" {
 		region = defaultRegion
 	}
 
-	// If profile name specified, we extract account name from it.
-	if len(profile) > 8 {
-		profile = profile[8:]
-	}
-
 	config := aws.Config{
 		Region:      aws.String(region),
-		Credentials: creds,
+		Credentials: profile.Credentials,
 	}
 
-	return &AWSList{
-		EC2:      ec2.New(session.New(), &config),
-		Region:   region,
-		Account:  profile,
-		Filename: filename,
+	return &EC2List{
+		EC2:     ec2.New(session.New(), &config),
+		Profile: profile,
+		Region:  region,
 	}
 }
 
 // ListRegions returns list of aws regions
-func (a *AWSList) ListRegions() ([]Profile, error) {
+func (c *EC2List) ListRegions() ([]string, error) {
 	// Prepare request
 	params := &ec2.DescribeRegionsInput{
 		DryRun: aws.Bool(false),
 	}
 
 	// Get aws regions
-	res, err := a.EC2.DescribeRegions(params)
+	res, err := c.EC2.DescribeRegions(params)
 	if err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {
 			log.Printf(awsErrError, awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
@@ -111,16 +60,13 @@ func (a *AWSList) ListRegions() ([]Profile, error) {
 		} else {
 			log.Printf(err.Error())
 		}
-		return []Profile{}, err
+		return []string{}, err
 	}
 
-	var profiles []Profile
+	var profiles []string
 	// Extract regions name from result and fill regions slice with them
 	for _, region := range res.Regions {
-		profiles = append(profiles, Profile{
-			Name:   a.Account,
-			Region: *region.RegionName,
-		})
+		profiles = append(profiles, *region.RegionName)
 	}
 
 	return profiles, nil
@@ -128,7 +74,7 @@ func (a *AWSList) ListRegions() ([]Profile, error) {
 
 // ListInstances print list of instances in a format:
 // {id},{name},{private_ip},{instance_size},{public_ip},{region},{account}
-func (a *AWSList) ListInstances(token string) {
+func (c *EC2List) ListInstances(token string) {
 	defer wg.Done()
 	// Prepare request
 	params := &ec2.DescribeInstancesInput{
@@ -150,7 +96,7 @@ func (a *AWSList) ListInstances(token string) {
 	}
 
 	// Get list of ec2 instances
-	res, err := a.EC2.DescribeInstances(params)
+	res, err := c.EC2.DescribeInstances(params)
 	if err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {
 			log.Printf(awsErrError, awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
@@ -180,8 +126,8 @@ func (a *AWSList) ListInstances(token string) {
 				instance.PrivateIpAddress,
 				instance.InstanceType,
 				instance.PublicIpAddress,
-				&a.Region,
-				&a.Account,
+				&c.Region,
+				&c.Profile.Name,
 			}
 
 			output_string := []string{}
@@ -206,6 +152,6 @@ func (a *AWSList) ListInstances(token string) {
 	// If there are more instances repeat request with a token
 	if res.NextToken != nil {
 		wg.Add(1)
-		go a.ListInstances(*res.NextToken)
+		go c.ListInstances(*res.NextToken)
 	}
 }

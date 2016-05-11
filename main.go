@@ -14,17 +14,18 @@ var (
 )
 
 // PrintInstances runs go routines to print instances from all regions within account
-func PrintInstances(profile string, regions []string) {
+func PrintInstances(profile *Profile, regions []string) {
 	defer wg.Done()
 	for _, region := range regions {
 		wg.Add(1)
-		go NewAWSList(profile, region).ListInstances("")
+		go NewEC2List(profile, region).ListInstances("")
 	}
 }
 
 // getInstances run go routines to print all instances from all regions and all accounts
 func getInstances() {
 	var regions []string
+	var profile *Profile
 
 	// Clear output_buffer
 	output_buffer = []string{}
@@ -33,12 +34,14 @@ func getInstances() {
 	profiles, _ := ListProfiles()
 
 	// Run go routines to print instances
-	for _, profile := range profiles {
+	for _, profile_name := range profiles {
 		// If we didn't load regions already, then fill regions slice
+		profile = NewProfile(profile_name)
+
 		if len(regions) == 0 {
-			r, _ := NewAWSList(profile, "").ListRegions()
-			for _, profile := range r {
-				regions = append(regions, profile.Region)
+			r, _ := NewEC2List(profile, "").ListRegions()
+			for _, region := range r {
+				regions = append(regions, region)
 			}
 		}
 
