@@ -31,7 +31,7 @@ func NewProfile(profile string) *Profile {
 }
 
 // Returns list of profiles names from credentials file
-func ListProfiles() ([]string, error) {
+func fetchProfiles() ([]string, error) {
 	filename := filepath.Join(os.Getenv("HOME"), ".aws", CredentialsFileName)
 
 	// Parse credentials file

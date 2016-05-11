@@ -2,15 +2,17 @@ package main
 
 import (
 	"flag"
+	"log"
 	"sync"
 	"time"
 )
 
 var (
 	// @readonly
-	portMsg     = "Listen port"
-	serviceMsg  = "Run as service"
-	intervalMsg = "Interval to pool data in seconds"
+	portMsg           = "Listen port"
+	serviceMsg        = "Run as service"
+	intervalMsg       = "Interval to pool data in seconds"
+	profilesPoolerMsg = "[INFO] Profiles fetched from file: %v"
 )
 
 // PrintInstances runs go routines to print instances from all regions within account
@@ -29,9 +31,6 @@ func getInstances() {
 
 	// Clear output_buffer
 	output_buffer = []string{}
-
-	// Get list of profiles from ~/.aws/config file
-	profiles, _ := ListProfiles()
 
 	// Run go routines to print instances
 	for _, profile_name := range profiles {
@@ -65,6 +64,19 @@ func runInstancesPoller(ticker *time.Ticker) {
 	}
 }
 
+/*func runRegionsPoller(ticker *time.Ticker) {
+    for range ticker.C {
+        fetchRegions(&regions)
+    }
+}*/
+
+func runProfilesPoller(ticker *time.Ticker) {
+	for range ticker.C {
+		profiles, _ = fetchProfiles()
+		log.Printf(profilesPoolerMsg, profiles)
+	}
+}
+
 var output_buffer []string
 var screen_buffer []string
 var service *bool
@@ -73,12 +85,19 @@ var interval *int
 var counter int
 var wg sync.WaitGroup
 
+var profiles []string
+var regions []string
+
 func main() {
 	// Parse arguments
 	port = flag.Int("port", 8080, portMsg)
 	service = flag.Bool("service", false, serviceMsg)
 	interval = flag.Int("interval", 30, intervalMsg)
 	flag.Parse()
+
+	// Get list of profiles from ~/.aws/config file
+	profiles, _ = fetchProfiles()
+	//regions, _ = fetchRegions()
 
 	// Get list of instances
 	getInstances()
@@ -88,6 +107,9 @@ func main() {
 		// Each 30 seconds (by default)
 		ticker := time.NewTicker(time.Second * time.Duration(*interval))
 		go runInstancesPoller(ticker)
+
+		//go runRegionsPoller(time.NewTicker(time.Minute * time.Duration(5)))
+		go runProfilesPoller(time.NewTicker(time.Second * time.Duration(5)))
 
 		// Run http server on specifig port
 		new(HttpServer).Run(*port)
