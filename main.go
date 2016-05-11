@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"github.com/aws/aws-sdk-go/service/ec2"
 	"sync"
 	"time"
 )
@@ -24,6 +25,8 @@ var wg sync.WaitGroup
 var profiles []string
 var regions []string
 
+var instances []ec2.Instance
+
 func main() {
 	// Parse arguments
 	port = flag.Int("port", 8080, portMsg)
@@ -31,12 +34,9 @@ func main() {
 	interval = flag.Int("interval", 30, intervalMsg)
 	flag.Parse()
 
-	// Get list of profiles from ~/.aws/config file
 	profiles, _ = fetchProfiles()
 	regions, _ = fetchRegions()
-
-	// Get list of instances
-	fetchInstances()
+	instances = fetchInstances()
 
 	// If specified service mode, run program as a service, and listen port
 	if *service {

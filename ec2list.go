@@ -42,9 +42,9 @@ func NewEC2List(profile *Profile, region string) *EC2List {
 	}
 }
 
-// ListInstances print list of instances in a format:
+// Print list of instances in a format:
 // {id},{name},{private_ip},{instance_size},{public_ip},{region},{account}
-func (c *EC2List) ListInstances(token string) {
+func (c *EC2List) fetchInstances(token string, channel chan ec2.Instance) {
 	defer wg.Done()
 	// Prepare request
 	params := &ec2.DescribeInstancesInput{
@@ -79,26 +79,39 @@ func (c *EC2List) ListInstances(token string) {
 	}
 
 	// Extract instances info from result and print it
-	for _, reservation := range res.Reservations {
-		for _, instance := range reservation.Instances {
+	for _, r := range res.Reservations {
+		for _, i := range r.Instances {
+
+			channel <- *i
 
 			// If there is no tag "Name", return "None"
 			name := "None"
-			for _, keys := range instance.Tags {
+			for _, keys := range i.Tags {
 				if *keys.Key == "Name" {
 					name = *keys.Value
 				}
 			}
 
 			instance_string := []*string{
-				instance.InstanceId,
+				i.InstanceId,
 				&name,
-				instance.PrivateIpAddress,
-				instance.InstanceType,
-				instance.PublicIpAddress,
+				i.PrivateIpAddress,
+				i.InstanceType,
+				i.PublicIpAddress,
 				&c.Region,
 				&c.Profile.Name,
+				i.KeyName,
+				i.ImageId,
+				i.Placement.AvailabilityZone,
+				i.SubnetId,
+				i.VpcId,
 			}
+
+			if i.IamInstanceProfile != nil {
+				instance_string = append(instance_string, i.IamInstanceProfile.Arn)
+			}
+
+			//log.Printf("%+v", i)
 
 			output_string := []string{}
 			for _, str := range instance_string {
@@ -122,38 +135,51 @@ func (c *EC2List) ListInstances(token string) {
 	// If there are more instances repeat request with a token
 	if res.NextToken != nil {
 		wg.Add(1)
-		go c.ListInstances(*res.NextToken)
+		go c.fetchInstances(*res.NextToken, channel)
 	}
 }
 
-// Run go routines to print all instances from all regions and all accounts
-func fetchInstances() {
+// Goroutine to print instances from all regions within account
+func fetchAccountInstances(profile *Profile, regions []string, channel chan ec2.Instance) {
+	defer wg.Done()
+	for _, region := range regions {
+		wg.Add(1)
+		go NewEC2List(profile, region).fetchInstances("", channel)
+	}
+}
+
+// Returns all instances from all regions and accounts
+func fetchInstances() []ec2.Instance {
 	var profile *Profile
 
 	// Clear output_buffer
 	output_buffer = []string{}
+	instances = []ec2.Instance{}
+	ch_instances := make(chan ec2.Instance)
 
 	// Run go routines to print instances
 	for _, profile_name := range profiles {
 		// If we didn't load regions already, then fill regions slice
 		wg.Add(1)
 		profile = NewProfile(profile_name)
-		go PrintInstances(profile, regions)
+		go fetchAccountInstances(profile, regions, ch_instances)
 	}
+
+	// Retreive results from all goroutines over channel
+	go func() {
+		for i := range ch_instances {
+			instances = append(instances, i)
+		}
+	}()
 
 	// Wait until receive info about all instances
 	wg.Wait()
 
+	// Close instances chaneel
+	close(ch_instances)
+
 	// Resize and fill screen buffer with output data
 	screen_buffer = make([]string, len(output_buffer), (cap(output_buffer)+1)*2)
 	copy(screen_buffer, output_buffer)
-}
-
-// PrintInstances runs go routines to print instances from all regions within account
-func PrintInstances(profile *Profile, regions []string) {
-	defer wg.Done()
-	for _, region := range regions {
-		wg.Add(1)
-		go NewEC2List(profile, region).ListInstances("")
-	}
+	return instances
 }

@@ -13,7 +13,7 @@ var (
 
 func runInstancesPoller(ticker *time.Ticker) {
 	for range ticker.C {
-		fetchInstances()
+		instances = fetchInstances()
 	}
 }
 
