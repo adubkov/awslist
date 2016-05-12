@@ -79,55 +79,12 @@ func (c *EC2List) fetchRegionInstances(region, next_token string, channel chan e
 		}
 	}
 
-	// Extract instances info from result and print it
+	// Send instances to channel
 	for _, r := range res.Reservations {
 		for _, i := range r.Instances {
-
+			// TODO: if service send to channel, else print
 			channel <- *i
-
-			// If there is no tag "Name", return "None"
-			name := "None"
-			for _, keys := range i.Tags {
-				if *keys.Key == "Name" {
-					name = *keys.Value
-				}
-			}
-
-			instance_string := []*string{
-				i.InstanceId,
-				&name,
-				i.PrivateIpAddress,
-				i.InstanceType,
-				i.PublicIpAddress,
-				&region,
-				&c.Profile.Name,
-				i.KeyName,
-				i.ImageId,
-				i.Placement.AvailabilityZone,
-				i.SubnetId,
-				i.VpcId,
-			}
-
-			if i.IamInstanceProfile != nil {
-				instance_string = append(instance_string, i.IamInstanceProfile.Arn)
-			}
-
-			output_string := []string{}
-			for _, str := range instance_string {
-				if str == nil {
-					output_string = append(output_string, "None")
-				} else {
-					output_string = append(output_string, *str)
-				}
-			}
-
-			instance := strings.Join(output_string, ",")
-			// If running in service mode, write in output buffer, else just print
-			if *service {
-				output_buffer = append(output_buffer, instance)
-			} else {
-				fmt.Printf("%s\n", instance)
-			}
+			c.printInstance(region, *i)
 		}
 	}
 
@@ -172,4 +129,50 @@ func fetchInstances() []ec2.Instance {
 	screen_buffer = make([]string, len(output_buffer), (cap(output_buffer)+1)*2)
 	copy(screen_buffer, output_buffer)
 	return instances
+}
+
+func (c *EC2List) printInstance(region string, i ec2.Instance) {
+	// If there is no tag "Name", return "None"
+	name := "None"
+	for _, keys := range i.Tags {
+		if *keys.Key == "Name" {
+			name = *keys.Value
+		}
+	}
+
+	instance_string := []*string{
+		i.InstanceId,
+		&name,
+		i.PrivateIpAddress,
+		i.InstanceType,
+		i.PublicIpAddress,
+		&region,
+		&c.Profile.Name,
+		i.KeyName,
+		i.ImageId,
+		i.Placement.AvailabilityZone,
+		i.SubnetId,
+		i.VpcId,
+	}
+
+	if i.IamInstanceProfile != nil {
+		instance_string = append(instance_string, i.IamInstanceProfile.Arn)
+	}
+
+	output_string := []string{}
+	for _, str := range instance_string {
+		if str == nil {
+			output_string = append(output_string, "None")
+		} else {
+			output_string = append(output_string, *str)
+		}
+	}
+
+	instance := strings.Join(output_string, ",")
+	// If running in service mode, write in output buffer, else just print
+	if *service {
+		output_buffer = append(output_buffer, instance)
+	} else {
+		fmt.Printf("%s\n", instance)
+	}
 }
