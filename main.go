@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"github.com/aws/aws-sdk-go/service/ec2"
+	_ "github.com/aws/aws-sdk-go/service/ec2"
 	"sync"
 	"time"
 )
@@ -14,8 +14,6 @@ var (
 	intervalMsg = "Interval to pool data in seconds"
 )
 
-var output_buffer []string
-var screen_buffer []string
 var service *bool
 var port *int
 var interval *int
@@ -25,7 +23,7 @@ var wg sync.WaitGroup
 var profiles []string
 var regions []string
 
-var instances []ec2.Instance
+var instances []Instance
 
 func main() {
 	// Parse arguments

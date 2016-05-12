@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"strings"
 )
 
 var (
@@ -15,19 +14,38 @@ var (
 
 type HttpServer struct{}
 
-// Default handler return screen buffer as a respond
+// Default handler return instances as a respond
 func (s *HttpServer) defaultHandler(res http.ResponseWriter, req *http.Request) {
 	log.Printf(rootHandlerMsg,
 		req.Host,
 		req.Method,
 		req.URL,
 		req.RemoteAddr,
-		len(screen_buffer))
+		len(instances))
 
 	statusCode := 200
 	res.WriteHeader(statusCode)
+	for _, i := range instances {
+		s := formatInstanceOutput(i.Profile.Name, i.Instance)
+		fmt.Fprintf(res, s)
+	}
+}
 
-	fmt.Fprintf(res, strings.Join(screen_buffer, "\n"))
+// Default handler return instances as a respond
+func (s *HttpServer) defaultHandlerV1(res http.ResponseWriter, req *http.Request) {
+	log.Printf(rootHandlerMsg,
+		req.Host,
+		req.Method,
+		req.URL,
+		req.RemoteAddr,
+		len(instances))
+
+	statusCode := 200
+	res.WriteHeader(statusCode)
+	for _, i := range instances {
+		s := formatInstanceOutputV1(i.Profile.Name, i.Instance)
+		fmt.Fprintf(res, s)
+	}
 }
 
 // Null handler do nothing but drop connection.
@@ -38,6 +56,8 @@ func (s *HttpServer) Run(port int) {
 	// Set default http handler
 	http.HandleFunc("/favicon.ico", s.nullHandler)
 	http.HandleFunc("/", s.defaultHandler)
+	http.HandleFunc("/v1", s.defaultHandlerV1)
+	http.HandleFunc("/v2", s.defaultHandler)
 
 	// Indicate port listening
 	log.Printf(runHttpMsg, port)

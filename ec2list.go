@@ -21,13 +21,18 @@ type EC2List struct {
 	Profile *Profile
 }
 
+type Instance struct {
+	Instance ec2.Instance
+	Profile  Profile
+}
+
 // Returns a pointer to a new EC2List object
 func NewEC2List(profile *Profile) *EC2List {
 	return &EC2List{Profile: profile}
 }
 
 // Print instances from all regions within account
-func (c *EC2List) fetchInstances(channel chan ec2.Instance) {
+func (c *EC2List) fetchInstances(channel chan Instance) {
 	defer wg.Done()
 	for _, region := range regions {
 		wg.Add(1)
@@ -37,13 +42,14 @@ func (c *EC2List) fetchInstances(channel chan ec2.Instance) {
 }
 
 // Print and send to channel list of instances.
-func (c *EC2List) fetchRegionInstances(region, next_token string, channel chan ec2.Instance) {
+func (c *EC2List) fetchRegionInstances(region, next_token string, channel chan Instance) {
 	defer wg.Done()
 
 	// Connect to region
 	config := aws.Config{
 		Region:      aws.String(region),
 		Credentials: c.Profile.Credentials,
+		MaxRetries:  aws.Int(20),
 	}
 	con := ec2.New(session.New(), &config)
 
@@ -82,9 +88,12 @@ func (c *EC2List) fetchRegionInstances(region, next_token string, channel chan e
 	// Send instances to channel
 	for _, r := range res.Reservations {
 		for _, i := range r.Instances {
-			// TODO: if service send to channel, else print
-			channel <- *i
-			c.printInstance(region, *i)
+			if *service {
+				channel <- Instance{Instance: *i, Profile: *c.Profile}
+			} else {
+				s := formatInstanceOutput(c.Profile.Name, *i)
+				fmt.Printf("%s", s)
+			}
 		}
 	}
 
@@ -96,13 +105,12 @@ func (c *EC2List) fetchRegionInstances(region, next_token string, channel chan e
 }
 
 // Returns all instances from all regions and accounts
-func fetchInstances() []ec2.Instance {
+func fetchInstances() []Instance {
 	var profile *Profile
+	var instances []Instance
 
-	// Clear output_buffer
-	output_buffer = []string{}
-	instances = []ec2.Instance{}
-	ch_instances := make(chan ec2.Instance)
+	ch_instances := make(chan Instance)
+	defer close(ch_instances)
 
 	// Run go routines to print instances
 	for _, profile_name := range profiles {
@@ -122,57 +130,68 @@ func fetchInstances() []ec2.Instance {
 	// Wait until receive info about all instances
 	wg.Wait()
 
-	// Close instances chaneel
-	close(ch_instances)
-
-	// Resize and fill screen buffer with output data
-	screen_buffer = make([]string, len(output_buffer), (cap(output_buffer)+1)*2)
-	copy(screen_buffer, output_buffer)
 	return instances
 }
 
-func (c *EC2List) printInstance(region string, i ec2.Instance) {
+// Returns formatted string with instance information.
+// This function is for backward compatibility with v1.
+func formatInstanceOutputV1(profile string, i ec2.Instance) string {
 	// If there is no tag "Name", return "None"
 	name := "None"
 	for _, keys := range i.Tags {
-		if *keys.Key == "Name" {
+		switch strings.ToLower(*keys.Key) {
+		case "name":
 			name = *keys.Value
 		}
 	}
 
-	instance_string := []*string{
+	instance := []*string{
 		i.InstanceId,
 		&name,
 		i.PrivateIpAddress,
 		i.InstanceType,
 		i.PublicIpAddress,
-		&region,
-		&c.Profile.Name,
+		i.Placement.AvailabilityZone,
+		&profile,
+	}
+
+	return makeFormattedOutput(instance)
+}
+
+// Returns formatted string with instance information.
+func formatInstanceOutput(profile string, i ec2.Instance) string {
+	// If there is no tag "Name", return "None"
+	name := "None"
+	team := "None"
+	for _, keys := range i.Tags {
+		switch strings.ToLower(*keys.Key) {
+		case "name":
+			name = *keys.Value
+		case "team":
+			team = *keys.Value
+		}
+	}
+
+	instance := []*string{
+		i.InstanceId,
+		&name,
+		&team,
+		i.PrivateIpAddress,
+		i.InstanceType,
+		i.PublicIpAddress,
+		i.Placement.AvailabilityZone,
+		&profile,
 		i.KeyName,
 		i.ImageId,
-		i.Placement.AvailabilityZone,
 		i.SubnetId,
 		i.VpcId,
 	}
 
 	if i.IamInstanceProfile != nil {
-		instance_string = append(instance_string, i.IamInstanceProfile.Arn)
+		iam_parts := strings.Split(*i.IamInstanceProfile.Arn, "/")
+		instance_profile := &iam_parts[len(iam_parts)-1]
+		instance = append(instance, instance_profile)
 	}
 
-	output_string := []string{}
-	for _, str := range instance_string {
-		if str == nil {
-			output_string = append(output_string, "None")
-		} else {
-			output_string = append(output_string, *str)
-		}
-	}
-
-	instance := strings.Join(output_string, ",")
-	// If running in service mode, write in output buffer, else just print
-	if *service {
-		output_buffer = append(output_buffer, instance)
-	} else {
-		fmt.Printf("%s\n", instance)
-	}
+	return makeFormattedOutput(instance)
 }
