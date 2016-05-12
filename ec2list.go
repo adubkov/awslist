@@ -18,34 +18,35 @@ var (
 )
 
 type EC2List struct {
-	EC2     *ec2.EC2
 	Profile *Profile
-	Region  string
 }
 
 // Returns a pointer to a new EC2List object
-func NewEC2List(profile *Profile, region string) *EC2List {
-	// If region is not specified, connect to default one - us-west-1
-	if region == "" {
-		region = defaultRegion
-	}
+func NewEC2List(profile *Profile) *EC2List {
+	return &EC2List{Profile: profile}
+}
 
-	config := aws.Config{
-		Region:      aws.String(region),
-		Credentials: profile.Credentials,
-	}
-
-	return &EC2List{
-		EC2:     ec2.New(session.New(), &config),
-		Profile: profile,
-		Region:  region,
+// Print instances from all regions within account
+func (c *EC2List) fetchInstances(channel chan ec2.Instance) {
+	defer wg.Done()
+	for _, region := range regions {
+		wg.Add(1)
+		next_token := ""
+		go c.fetchRegionInstances(region, next_token, channel)
 	}
 }
 
-// Print list of instances in a format:
-// {id},{name},{private_ip},{instance_size},{public_ip},{region},{account}
-func (c *EC2List) fetchInstances(token string, channel chan ec2.Instance) {
+// Print and send to channel list of instances.
+func (c *EC2List) fetchRegionInstances(region, next_token string, channel chan ec2.Instance) {
 	defer wg.Done()
+
+	// Connect to region
+	config := aws.Config{
+		Region:      aws.String(region),
+		Credentials: c.Profile.Credentials,
+	}
+	con := ec2.New(session.New(), &config)
+
 	// Prepare request
 	params := &ec2.DescribeInstancesInput{
 		DryRun: aws.Bool(false),
@@ -62,11 +63,11 @@ func (c *EC2List) fetchInstances(token string, channel chan ec2.Instance) {
 		// Maximum count instances on one result page
 		MaxResults: aws.Int64(1000),
 		// Next page token
-		NextToken: aws.String(token),
+		NextToken: aws.String(next_token),
 	}
 
 	// Get list of ec2 instances
-	res, err := c.EC2.DescribeInstances(params)
+	res, err := con.DescribeInstances(params)
 	if err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {
 			log.Printf(awsErrError, awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
@@ -98,7 +99,7 @@ func (c *EC2List) fetchInstances(token string, channel chan ec2.Instance) {
 				i.PrivateIpAddress,
 				i.InstanceType,
 				i.PublicIpAddress,
-				&c.Region,
+				&region,
 				&c.Profile.Name,
 				i.KeyName,
 				i.ImageId,
@@ -110,8 +111,6 @@ func (c *EC2List) fetchInstances(token string, channel chan ec2.Instance) {
 			if i.IamInstanceProfile != nil {
 				instance_string = append(instance_string, i.IamInstanceProfile.Arn)
 			}
-
-			//log.Printf("%+v", i)
 
 			output_string := []string{}
 			for _, str := range instance_string {
@@ -135,16 +134,7 @@ func (c *EC2List) fetchInstances(token string, channel chan ec2.Instance) {
 	// If there are more instances repeat request with a token
 	if res.NextToken != nil {
 		wg.Add(1)
-		go c.fetchInstances(*res.NextToken, channel)
-	}
-}
-
-// Goroutine to print instances from all regions within account
-func fetchAccountInstances(profile *Profile, regions []string, channel chan ec2.Instance) {
-	defer wg.Done()
-	for _, region := range regions {
-		wg.Add(1)
-		go NewEC2List(profile, region).fetchInstances("", channel)
+		go c.fetchRegionInstances(region, *res.NextToken, channel)
 	}
 }
 
@@ -162,7 +152,7 @@ func fetchInstances() []ec2.Instance {
 		// If we didn't load regions already, then fill regions slice
 		wg.Add(1)
 		profile = NewProfile(profile_name)
-		go fetchAccountInstances(profile, regions, ch_instances)
+		go NewEC2List(profile).fetchInstances(ch_instances)
 	}
 
 	// Retreive results from all goroutines over channel

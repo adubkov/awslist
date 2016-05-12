@@ -5,7 +5,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
-	"log"
 )
 
 var (
@@ -15,10 +14,7 @@ var (
 
 // Returns list of aws regions
 func fetchRegions() ([]string, error) {
-	// Prepare request
-	params := &ec2.DescribeRegionsInput{
-		DryRun: aws.Bool(false),
-	}
+	var regions []string
 
 	if len(profiles) == 0 {
 		return []string{}, errNoProfiles
@@ -32,24 +28,15 @@ func fetchRegions() ([]string, error) {
 	con := ec2.New(session.New(), &config)
 
 	// Get aws regions
-	res, err := con.DescribeRegions(params)
+	res, err := con.DescribeRegions(&ec2.DescribeRegionsInput{})
 	if err != nil {
-		if awsErr, ok := err.(awserr.Error); ok {
-			log.Printf(awsErrError, awsErr.Code(), awsErr.Message(), awsErr.OrigErr())
-			if reqErr, ok := err.(awserr.RequestFailure); ok {
-				log.Printf(awsErrRequestFailure, reqErr.Code(), reqErr.Message(), reqErr.StatusCode(), reqErr.RequestID())
-			}
-		} else {
-			log.Printf(err.Error())
-		}
 		return []string{}, err
 	}
 
-	var profiles []string
-	// Extract regions name from result and fill regions slice with them
+	// Fill slice with regions
 	for _, region := range res.Regions {
-		profiles = append(profiles, *region.RegionName)
+		regions = append(regions, *region.RegionName)
 	}
 
-	return profiles, nil
+	return regions, nil
 }
