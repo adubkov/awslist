@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"log"
 	"strings"
+	"time"
 )
 
 var (
@@ -33,9 +34,9 @@ func NewEC2List(profile *Profile) *EC2List {
 
 // Print instances from all regions within account
 func (c *EC2List) fetchInstances(channel chan Instance) {
-	defer wg.Done()
+	defer ec2_wg.Done()
 	for _, region := range regions {
-		wg.Add(1)
+		ec2_wg.Add(1)
 		next_token := ""
 		go c.fetchRegionInstances(region, next_token, channel)
 	}
@@ -43,7 +44,7 @@ func (c *EC2List) fetchInstances(channel chan Instance) {
 
 // Print and send to channel list of instances.
 func (c *EC2List) fetchRegionInstances(region, next_token string, channel chan Instance) {
-	defer wg.Done()
+	defer ec2_wg.Done()
 
 	// Connect to region
 	config := aws.Config{
@@ -99,7 +100,7 @@ func (c *EC2List) fetchRegionInstances(region, next_token string, channel chan I
 
 	// If there are more instances repeat request with a token
 	if res.NextToken != nil {
-		wg.Add(1)
+		ec2_wg.Add(1)
 		go c.fetchRegionInstances(region, *res.NextToken, channel)
 	}
 }
@@ -115,7 +116,7 @@ func fetchInstances() []Instance {
 	// Run go routines to print instances
 	for _, profile_name := range profiles {
 		// If we didn't load regions already, then fill regions slice
-		wg.Add(1)
+		ec2_wg.Add(1)
 		profile = NewProfile(profile_name)
 		go NewEC2List(profile).fetchInstances(ch_instances)
 	}
@@ -128,7 +129,7 @@ func fetchInstances() []Instance {
 	}()
 
 	// Wait until receive info about all instances
-	wg.Wait()
+	ec2_wg.Wait()
 
 	return instances
 }
@@ -136,8 +137,8 @@ func fetchInstances() []Instance {
 // Returns formatted string with instance information.
 // This function is for backward compatibility with v1.
 func formatInstanceOutputV1(profile string, i ec2.Instance) string {
-	// If there is no tag "Name", return "None"
-	name := "None"
+	// If there is no tag "Name", return ""
+	name := ""
 	for _, keys := range i.Tags {
 		switch strings.ToLower(*keys.Key) {
 		case "name":
@@ -161,30 +162,35 @@ func formatInstanceOutputV1(profile string, i ec2.Instance) string {
 // Returns formatted string with instance information.
 func formatInstanceOutput(profile string, i ec2.Instance) string {
 	// If there is no tag "Name", return "None"
-	name := "None"
-	team := "None"
+	name, team, autoscaling_group_name := "", "", ""
 	for _, keys := range i.Tags {
 		switch strings.ToLower(*keys.Key) {
 		case "name":
 			name = *keys.Value
 		case "team":
 			team = *keys.Value
+		case "aws:autoscaling:groupname":
+			autoscaling_group_name = *keys.Value
 		}
 	}
+
+	launch_time := i.LaunchTime.Format(time.RFC3339)
 
 	instance := []*string{
 		i.InstanceId,
 		&name,
 		&team,
 		i.PrivateIpAddress,
-		i.InstanceType,
 		i.PublicIpAddress,
+		&autoscaling_group_name,
 		i.Placement.AvailabilityZone,
+		i.InstanceType,
 		&profile,
 		i.KeyName,
 		i.ImageId,
 		i.SubnetId,
 		i.VpcId,
+		&launch_time,
 	}
 
 	if i.IamInstanceProfile != nil {

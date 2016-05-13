@@ -11,9 +11,10 @@ var (
 	regionsPoolerMsg  = "[INFO] Regions fetched from aws: %v"
 )
 
-func runInstancesPoller(ticker *time.Ticker) {
+func runProfilesPoller(ticker *time.Ticker) {
 	for range ticker.C {
-		instances = fetchInstances()
+		profiles, _ = fetchProfiles()
+		log.Printf(profilesPoolerMsg, profiles)
 	}
 }
 
@@ -24,9 +25,14 @@ func runRegionsPoller(ticker *time.Ticker) {
 	}
 }
 
-func runProfilesPoller(ticker *time.Ticker) {
+func runInstancesPoller(ticker *time.Ticker) {
 	for range ticker.C {
-		profiles, _ = fetchProfiles()
-		log.Printf(profilesPoolerMsg, profiles)
+		instances = fetchInstances()
+	}
+}
+
+func runElbPoller(ticker *time.Ticker) {
+	for range ticker.C {
+		elbs = fetchElb()
 	}
 }
