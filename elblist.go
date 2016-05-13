@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/elb"
 	"log"
+	"strings"
 )
 
 var (
@@ -113,20 +115,48 @@ func fetchElb() []Elb {
 	return elb
 }
 
+func formatListenersOutput(i elb.LoadBalancerDescription) string {
+	var listener_str string
+	var lb_port, i_port int64
+	var lb_protocol, i_protocol string
+
+	listeners := []string{}
+
+	for _, l := range i.ListenerDescriptions {
+		lb_port = *l.Listener.LoadBalancerPort
+		i_port = *l.Listener.InstancePort
+		lb_protocol = *l.Listener.Protocol
+		i_protocol = *l.Listener.InstanceProtocol
+
+		listener_str = fmt.Sprintf("%d:%s<=>:%d:%s",
+			lb_port,
+			lb_protocol,
+			i_port,
+			i_protocol)
+
+		listeners = append(listeners, listener_str)
+	}
+
+	res := strings.Join(listeners, " ")
+	return res
+}
+
 // Returns formatted string with elb information.
 func formatElbOutput(profile string, i elb.LoadBalancerDescription) string {
+	azs := formatSliceOutput(i.AvailabilityZones)
+	subnets := formatSliceOutput(i.Subnets)
+	listeners := formatListenersOutput(i)
 
-	//strings.Join(i.AvailabilityZones, ","),
-	//strings.Join(&i.Subnets[:], ","),
-	//i.ListenerDescriptions,
-	//i.Subnets
 	e := []*string{
 		i.LoadBalancerName,
 		i.Scheme,
 		i.DNSName,
+		&listeners,
 		i.HealthCheck.Target,
-		&profile,
+		&azs,
+		&subnets,
 		i.VPCId,
+		&profile,
 	}
 
 	return makeFormattedOutput(e)

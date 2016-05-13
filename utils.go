@@ -35,3 +35,24 @@ func printJson(res io.Writer, v interface{}) {
 func printText(res io.Writer, s string) {
 	fmt.Fprintf(res, s)
 }
+
+func jsonMarshal(v interface{}) string {
+	res, _ := json.Marshal(v)
+	return string(res[:])
+}
+
+func strReplace(s, charset, r string) string {
+	res := s
+	for i := range charset {
+		res = strings.Replace(res, string(charset[i]), r, -1)
+	}
+	return res
+}
+
+func formatSliceOutput(s []*string) string {
+	chars := "[]\"'{}"
+	res := jsonMarshal(s)
+	res = strReplace(res, chars, "")
+	res = strReplace(res, ",", " ")
+	return res
+}

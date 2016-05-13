@@ -163,6 +163,7 @@ func formatInstanceOutputV1(profile string, i ec2.Instance) string {
 func formatInstanceOutput(profile string, i ec2.Instance) string {
 	// If there is no tag "Name", return "None"
 	name, team, autoscaling_group_name := "", "", ""
+	instance_profile := ""
 	for _, keys := range i.Tags {
 		switch strings.ToLower(*keys.Key) {
 		case "name":
@@ -172,6 +173,11 @@ func formatInstanceOutput(profile string, i ec2.Instance) string {
 		case "aws:autoscaling:groupname":
 			autoscaling_group_name = *keys.Value
 		}
+	}
+
+	if i.IamInstanceProfile != nil {
+		iam_parts := strings.Split(*i.IamInstanceProfile.Arn, "/")
+		instance_profile = iam_parts[len(iam_parts)-1]
 	}
 
 	launch_time := i.LaunchTime.Format(time.RFC3339)
@@ -190,13 +196,8 @@ func formatInstanceOutput(profile string, i ec2.Instance) string {
 		i.ImageId,
 		i.SubnetId,
 		i.VpcId,
+		&instance_profile,
 		&launch_time,
-	}
-
-	if i.IamInstanceProfile != nil {
-		iam_parts := strings.Split(*i.IamInstanceProfile.Arn, "/")
-		instance_profile := &iam_parts[len(iam_parts)-1]
-		instance = append(instance, instance_profile)
 	}
 
 	return makeFormattedOutput(instance)
