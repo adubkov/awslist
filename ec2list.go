@@ -35,9 +35,9 @@ func NewEC2List(profile *Profile) *EC2List {
 // Print instances from all regions within account
 func (c *EC2List) fetchInstances(channel chan Instance) {
 	defer ec2_wg.Done()
+	var next_token string
 	for _, region := range regions {
 		ec2_wg.Add(1)
-		next_token := ""
 		go c.fetchRegionInstances(region, next_token, channel)
 	}
 }
@@ -138,7 +138,7 @@ func fetchInstances() []Instance {
 // This function is for backward compatibility with v1.
 func formatInstanceOutputV1(profile string, i ec2.Instance) string {
 	// If there is no tag "Name", return ""
-	name := ""
+	var name string
 	for _, keys := range i.Tags {
 		switch strings.ToLower(*keys.Key) {
 		case "name":
@@ -162,8 +162,7 @@ func formatInstanceOutputV1(profile string, i ec2.Instance) string {
 // Returns formatted string with instance information.
 func formatInstanceOutput(profile string, i ec2.Instance) string {
 	// If there is no tag "Name", return "None"
-	name, team, autoscaling_group_name := "", "", ""
-	instance_profile := ""
+	var name, team, autoscaling_group_name, instance_profile string
 	for _, keys := range i.Tags {
 		switch strings.ToLower(*keys.Key) {
 		case "name":

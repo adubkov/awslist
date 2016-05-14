@@ -31,9 +31,9 @@ func NewElbList(profile *Profile) *ElbList {
 // Print instances from all regions within account
 func (c *ElbList) fetchElb(channel chan Elb) {
 	defer elb_wg.Done()
+	var next_token string
 	for _, region := range regions {
 		elb_wg.Add(1)
-		next_token := ""
 		go c.fetchRegionElb(region, next_token, channel)
 	}
 }
@@ -161,3 +161,7 @@ func formatElbOutput(profile string, i elb.LoadBalancerDescription) string {
 
 	return makeFormattedOutput(e)
 }
+
+// TODO: formatElbOutput show instances
+// TODO: formatProfileElbOutput limit to profile
+// TODO: formatAllElbOutput print all
