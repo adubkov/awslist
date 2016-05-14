@@ -23,7 +23,7 @@ type Elb struct {
 	Profile Profile
 }
 
-// Returns a pointer to a new EC2List object
+// Returns a pointer to a new ElbList object
 func NewElbList(profile *Profile) *ElbList {
 	return &ElbList{Profile: profile}
 }
@@ -61,7 +61,7 @@ func (c *ElbList) fetchRegionElb(region, next_token string, channel chan Elb) {
 		params.Marker = aws.String(next_token)
 	}
 
-	// Get list of ec2 instances
+	// Get list of elb
 	res, err := con.DescribeLoadBalancers(params)
 	if err != nil {
 		if awsErr, ok := err.(awserr.Error); ok {

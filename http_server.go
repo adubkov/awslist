@@ -96,6 +96,13 @@ func (s *HttpServer) elbHandler(res http.ResponseWriter, req *http.Request) {
 		printText(res, content)
 	}
 }
+func (s *HttpServer) debugHandler(res http.ResponseWriter, req *http.Request) {
+	params := mux.Vars(req)
+	statusCode := 200
+	res.WriteHeader(statusCode)
+	text := fmt.Sprintf("%+v", params)
+	printText(res, text)
+}
 
 // Null handler do nothing but drop connection.
 func (s *HttpServer) nullHandler(res http.ResponseWriter, req *http.Request) {}
@@ -110,9 +117,11 @@ func (s *HttpServer) Run(port int) {
 		r.HandleFunc("/", s.ec2HandlerV1)
 	}
 
-	r.HandleFunc("/favicon.ico", s.nullHandler)
-	r.HandleFunc("/{ver:(v1|v2)?/?}{type:/?(ec2/?)?}{format:(.json)?}", s.ec2Handler)
-	r.HandleFunc("/{ver:(v2)?/?}{type:/?(elb/?)?}{format:(.json)?}", s.elbHandler)
+	r.HandleFunc(`/favicon.ico`, s.nullHandler)
+	r.HandleFunc(`/{ver:(v1|v2)?/?}{type:/?(ec2/?)?}{format:(.json)?}`, s.ec2Handler)
+	r.HandleFunc(`/{ver:(v2)?/?}{type:/?(elb/?)?}{format:(.json)?}`, s.elbHandler)
+	r.HandleFunc(`/{ver:(v2)?/?}{type:(elb)?}/{profile:(\w*/?)?}{format:(.json)?}`, s.debugHandler)
+	r.HandleFunc(`/{ver:(v2)?/?}{type:(elb)?}/{profile}/{elb:(\w*/?)?}{format:(.json)?}`, s.debugHandler)
 
 	// Indicate port listening
 	log.Printf(runHttpMsg, port)

@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	_ "github.com/aws/aws-sdk-go/service/ec2"
 	"sync"
 	"time"
 )
@@ -45,12 +44,11 @@ func main() {
 	if *service {
 		// Each 30 seconds (by default)
 		ticker := time.NewTicker(time.Second * time.Duration(*interval))
-		go runInstancesPoller(ticker)
-
 		elb_ticker := time.NewTicker(time.Minute * time.Duration(1))
-		go runElbPoller(elb_ticker)
-
 		general_ticker := time.NewTicker(time.Minute * time.Duration(5))
+
+		go runInstancesPoller(ticker)
+		go runElbPoller(elb_ticker)
 		go runRegionsPoller(general_ticker)
 		go runProfilesPoller(general_ticker)
 
