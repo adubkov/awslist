@@ -12,9 +12,11 @@ var (
 	portMsg     = "Listen port"
 	serviceMsg  = "Run as service"
 	intervalMsg = "Interval to pool data in seconds"
+	compatMsg   = "By default return v1 formatted output"
 )
 
 var service *bool
+var compat *bool
 var port *int
 var interval *int
 var counter int
@@ -30,6 +32,7 @@ func main() {
 	// Parse arguments
 	port = flag.Int("port", 8080, portMsg)
 	service = flag.Bool("service", false, serviceMsg)
+	compat = flag.Bool("compat", false, compatMsg)
 	interval = flag.Int("interval", 30, intervalMsg)
 	flag.Parse()
 

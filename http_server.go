@@ -10,16 +10,37 @@ import (
 
 var (
 	// @readonly
-	rootHandlerMsg = "[INFO][%s]: %s %s request from %s. %d instances was returned.\n"
-	runHttpMsg     = "[INFO] Runing awslist server on port: %d"
+	ec2HandlerMsg = "[INFO][%s]: %s %s request from %s. %d Instances was returned.\n"
+	elbHandlerMsg = "[INFO][%s]: %s %s request from %s. %d ELB was returned.\n"
+	runHttpMsg    = "[INFO] Runing awslist server on port: %d"
 )
 
 type HttpServer struct{}
 
+// V1 default handler return instances in old style as a respond.
+// For backward compatibility.
+func (s *HttpServer) ec2HandlerV1(res http.ResponseWriter, req *http.Request) {
+	log.Printf(ec2HandlerMsg,
+		req.Host,
+		req.Method,
+		req.URL,
+		req.RemoteAddr,
+		len(instances))
+
+	statusCode := 200
+	res.WriteHeader(statusCode)
+	data := []string{}
+	for _, i := range instances {
+		data = append(data, formatInstanceOutputV1(i.Profile.Name, i.Instance))
+	}
+	content := strings.Join(data, "")
+	printText(res, content)
+}
+
 // Default handler return instances as a respond
 func (s *HttpServer) ec2Handler(res http.ResponseWriter, req *http.Request) {
 
-	log.Printf(rootHandlerMsg,
+	log.Printf(ec2HandlerMsg,
 		req.Host,
 		req.Method,
 		req.URL,
@@ -50,6 +71,13 @@ func (s *HttpServer) ec2Handler(res http.ResponseWriter, req *http.Request) {
 }
 
 func (s *HttpServer) elbHandler(res http.ResponseWriter, req *http.Request) {
+	log.Printf(elbHandlerMsg,
+		req.Host,
+		req.Method,
+		req.URL,
+		req.RemoteAddr,
+		len(elbs))
+
 	params := mux.Vars(req)
 
 	statusCode := 200
@@ -76,6 +104,11 @@ func (s *HttpServer) nullHandler(res http.ResponseWriter, req *http.Request) {}
 func (s *HttpServer) Run(port int) {
 
 	r := mux.NewRouter()
+
+	// For backward compatibility we should add V1 handler as default
+	if *compat {
+		r.HandleFunc("/", s.ec2HandlerV1)
+	}
 
 	r.HandleFunc("/favicon.ico", s.nullHandler)
 	r.HandleFunc("/{ver:(v1|v2)?/?}{type:/?(ec2/?)?}{format:(.json)?}", s.ec2Handler)
