@@ -20,13 +20,6 @@ type HttpServer struct{}
 // V1 default handler return instances in old style as a respond.
 // For backward compatibility.
 func (s *HttpServer) ec2HandlerV1(res http.ResponseWriter, req *http.Request) {
-	log.Printf(ec2HandlerMsg,
-		req.Host,
-		req.Method,
-		req.URL,
-		req.RemoteAddr,
-		len(instances))
-
 	statusCode := 200
 	res.WriteHeader(statusCode)
 	data := []string{}
@@ -34,21 +27,19 @@ func (s *HttpServer) ec2HandlerV1(res http.ResponseWriter, req *http.Request) {
 		data = append(data, formatInstanceOutputV1(i.Profile.Name, i.Instance))
 	}
 	content := strings.Join(data, "")
-	printText(res, content)
-}
-
-// Default handler return instances as a respond
-func (s *HttpServer) ec2Handler(res http.ResponseWriter, req *http.Request) {
 
 	log.Printf(ec2HandlerMsg,
 		req.Host,
 		req.Method,
 		req.URL,
 		req.RemoteAddr,
-		len(instances))
+		len(data))
+	printText(res, content)
+}
 
+// Default handler return instances as a respond
+func (s *HttpServer) ec2Handler(res http.ResponseWriter, req *http.Request) {
 	params := mux.Vars(req)
-
 	statusCode := 200
 	res.WriteHeader(statusCode)
 	switch params["format"] {
@@ -66,36 +57,69 @@ func (s *HttpServer) ec2Handler(res http.ResponseWriter, req *http.Request) {
 			}
 		}
 		content := strings.Join(data, "")
+
+		log.Printf(ec2HandlerMsg,
+			req.Host,
+			req.Method,
+			req.URL,
+			req.RemoteAddr,
+			len(data))
 		printText(res, content)
 	}
 }
 
 func (s *HttpServer) elbHandler(res http.ResponseWriter, req *http.Request) {
+	var profile, elb string
+	var result []Elb
+
+	params := mux.Vars(req)
+	statusCode := 200
+	res.WriteHeader(statusCode)
+
+	profile = strings.Trim(params["profile"], "/")
+	elb = strings.Trim(params["elb"], "/")
+
+	if elb != "" {
+		for _, i := range elbs {
+			if *i.Elb.LoadBalancerName == elb && i.Profile.Name == profile {
+				result = append(result, i)
+				break
+			}
+		}
+	} else if profile != "" {
+		for _, i := range elbs {
+			if i.Profile.Name == profile {
+				result = append(result, i)
+			}
+		}
+	} else {
+		for _, i := range elbs {
+			result = append(result, i)
+		}
+	}
+
+	switch params["format"] {
+	case ".json":
+		printJson(res, result)
+	default:
+		for _, r := range result {
+			if elb != "" {
+				printText(res, formatElbInstancesOutput(r.Profile.Name, r.Elb))
+			} else {
+				printText(res, formatElbOutput(r.Profile.Name, r.Elb))
+			}
+		}
+	}
+
 	log.Printf(elbHandlerMsg,
 		req.Host,
 		req.Method,
 		req.URL,
 		req.RemoteAddr,
-		len(elbs))
+		len(result))
 
-	params := mux.Vars(req)
-
-	statusCode := 200
-	res.WriteHeader(statusCode)
-
-	switch params["format"] {
-	case ".json":
-		printJson(res, elbs)
-		return
-	default:
-		data := []string{}
-		for _, i := range elbs {
-			data = append(data, formatElbOutput(i.Profile.Name, i.Elb))
-		}
-		content := strings.Join(data, "")
-		printText(res, content)
-	}
 }
+
 func (s *HttpServer) debugHandler(res http.ResponseWriter, req *http.Request) {
 	params := mux.Vars(req)
 	statusCode := 200
@@ -120,8 +144,8 @@ func (s *HttpServer) Run(port int) {
 	r.HandleFunc(`/favicon.ico`, s.nullHandler)
 	r.HandleFunc(`/{ver:(v1|v2)?/?}{type:/?(ec2/?)?}{format:(.json)?}`, s.ec2Handler)
 	r.HandleFunc(`/{ver:(v2)?/?}{type:/?(elb/?)?}{format:(.json)?}`, s.elbHandler)
-	r.HandleFunc(`/{ver:(v2)?/?}{type:(elb)?}/{profile:(\w*/?)?}{format:(.json)?}`, s.debugHandler)
-	r.HandleFunc(`/{ver:(v2)?/?}{type:(elb)?}/{profile}/{elb:(\w*/?)?}{format:(.json)?}`, s.debugHandler)
+	r.HandleFunc(`/{ver:(v2)?/?}{type:(elb)?}/{profile:([\w\s-]*/?)?}{format:(.json)?}`, s.elbHandler)
+	r.HandleFunc(`/{ver:(v2)?/?}{type:(elb)?}/{profile}/{elb:([\w\s-]*/?)?}{format:(.json)?}`, s.elbHandler)
 
 	// Indicate port listening
 	log.Printf(runHttpMsg, port)

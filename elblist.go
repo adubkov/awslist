@@ -162,6 +162,19 @@ func formatElbOutput(profile string, i elb.LoadBalancerDescription) string {
 	return makeFormattedOutput(e)
 }
 
-// TODO: formatElbOutput show instances
-// TODO: formatProfileElbOutput limit to profile
-// TODO: formatAllElbOutput print all
+// Returns formatted string with elb instances information.
+func formatElbInstancesOutput(profile string, e elb.LoadBalancerDescription) string {
+	outStr := []string{}
+
+	for _, n := range e.Instances {
+		for _, i := range instances {
+			if *i.Instance.InstanceId == *n.InstanceId {
+				outStr = append(outStr, formatInstanceOutput(profile, i.Instance))
+				break
+			}
+		}
+	}
+
+	// formatInstanceOutput
+	return strings.Join(outStr, "")
+}
