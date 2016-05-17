@@ -1,0 +1,58 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"strings"
+)
+
+var (
+// @readonly
+)
+
+// Convert []*string to string.
+// If fills nil values with "None"
+func makeFormattedOutput(i []*string) string {
+	s := []string{}
+	for _, str := range i {
+		if str == nil {
+			s = append(s, "None")
+		} else {
+			s = append(s, *str)
+		}
+	}
+
+	i_parts := strings.Join(s, ",")
+	return fmt.Sprintf("%s\n", i_parts)
+}
+
+func printJson(res io.Writer, v interface{}) {
+	data, _ := json.MarshalIndent(v, "", "\t")
+	fmt.Fprintf(res, string(data[:]))
+}
+
+func printText(res io.Writer, s string) {
+	fmt.Fprintf(res, s)
+}
+
+func jsonMarshal(v interface{}) string {
+	res, _ := json.Marshal(v)
+	return string(res[:])
+}
+
+func strReplace(s, charset, r string) string {
+	res := s
+	for i := range charset {
+		res = strings.Replace(res, string(charset[i]), r, -1)
+	}
+	return res
+}
+
+func formatSliceOutput(s []*string) string {
+	chars := "[]\"'{}"
+	res := jsonMarshal(s)
+	res = strReplace(res, chars, "")
+	res = strReplace(res, ",", " ")
+	return res
+}
