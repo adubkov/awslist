@@ -47,10 +47,10 @@ func main() {
 		elb_ticker := time.NewTicker(time.Minute * time.Duration(1))
 		general_ticker := time.NewTicker(time.Minute * time.Duration(5))
 
-		go runInstancesPoller(ticker)
-		go runElbPoller(elb_ticker)
-		go runRegionsPoller(general_ticker)
-		go runProfilesPoller(general_ticker)
+		go runInstancesPuller(ticker)
+		go runElbPuller(elb_ticker)
+		go runRegionsPuller(general_ticker)
+		go runProfilesPuller(general_ticker)
 
 		// Run http server on specifig port
 		new(HttpServer).Run(*port)
