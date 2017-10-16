@@ -4,28 +4,27 @@ import (
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/elb"
 	"log"
 	"strings"
 )
 
-var (
-// @readonly
-)
-
 type ElbList struct {
-	Profile *Profile
+	Credentials *credentials.Credentials
+	Account     string
 }
 
 type Elb struct {
 	Elb     elb.LoadBalancerDescription
-	Profile Profile
+	Account string
 }
 
 // Returns a pointer to a new ElbList object
-func NewElbList(profile *Profile) *ElbList {
-	return &ElbList{Profile: profile}
+func NewElbList(account string) *ElbList {
+	creds := assumeRole(fmt.Sprintf(roleArnTemplate, account, roleName))
+	return &ElbList{Account: account, Credentials: creds}
 }
 
 // Print instances from all regions within account
@@ -45,7 +44,7 @@ func (c *ElbList) fetchRegionElb(region, next_token string, channel chan Elb) {
 	// Connect to region
 	config := aws.Config{
 		Region:      aws.String(region),
-		Credentials: c.Profile.Credentials,
+		Credentials: c.Credentials,
 		MaxRetries:  aws.Int(20),
 	}
 	con := elb.New(session.New(), &config)
@@ -76,7 +75,7 @@ func (c *ElbList) fetchRegionElb(region, next_token string, channel chan Elb) {
 
 	// Send instances to channel
 	for _, r := range res.LoadBalancerDescriptions {
-		channel <- Elb{Elb: *r, Profile: *c.Profile}
+		channel <- Elb{Elb: *r, Account: c.Account}
 	}
 
 	// If there are more instances repeat request with a token
@@ -88,18 +87,16 @@ func (c *ElbList) fetchRegionElb(region, next_token string, channel chan Elb) {
 
 // Returns all instances from all regions and accounts
 func fetchElb() []Elb {
-	var profile *Profile
 	var elb []Elb
 
 	ch_elb := make(chan Elb)
 	defer close(ch_elb)
 
 	// Run go routines to print instances
-	for _, profile_name := range profiles {
+	for _, account := range accounts {
 		// If we didn't load regions already, then fill regions slice
 		elb_wg.Add(1)
-		profile = NewProfile(profile_name)
-		go NewElbList(profile).fetchElb(ch_elb)
+		go NewElbList(account).fetchElb(ch_elb)
 	}
 
 	// Retreive results from all goroutines over channel
@@ -142,7 +139,7 @@ func formatListenersOutput(i elb.LoadBalancerDescription) string {
 }
 
 // Returns formatted string with elb information.
-func formatElbOutput(profile string, i elb.LoadBalancerDescription) string {
+func formatElbOutput(account string, i elb.LoadBalancerDescription) string {
 	azs := formatSliceOutput(i.AvailabilityZones)
 	subnets := formatSliceOutput(i.Subnets)
 	listeners := formatListenersOutput(i)
@@ -156,20 +153,20 @@ func formatElbOutput(profile string, i elb.LoadBalancerDescription) string {
 		&azs,
 		&subnets,
 		i.VPCId,
-		&profile,
+		&account,
 	}
 
 	return makeFormattedOutput(e)
 }
 
 // Returns formatted string with elb instances information.
-func formatElbInstancesOutput(profile string, e elb.LoadBalancerDescription) string {
+func formatElbInstancesOutput(account string, e elb.LoadBalancerDescription) string {
 	outStr := []string{}
 
 	for _, n := range e.Instances {
 		for _, i := range instances {
 			if *i.Instance.InstanceId == *n.InstanceId {
-				outStr = append(outStr, formatInstanceOutput(profile, i.Instance))
+				outStr = append(outStr, formatInstanceOutput(account, i.Instance))
 				break
 			}
 		}
