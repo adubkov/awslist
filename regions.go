@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -9,21 +10,24 @@ import (
 
 var (
 	// @readonly
-	errNoProfiles = awserr.New("NoProfiles", "There are no profiles found in aws credentials file.", nil)
+	defaultRegion = "us-west-1"
+	errNoAccounts = awserr.New("NoAccounts", "AWS_ACCOUNTS must contains list of aws accounts id", nil)
 )
 
 // Returns list of aws regions
 func fetchRegions() ([]string, error) {
 	var regions []string
 
-	if len(profiles) == 0 {
-		return []string{}, errNoProfiles
+	if len(accounts) == 0 {
+		return []string{}, errNoAccounts
 	}
 
-	profile := NewProfile(profiles[0])
+	// Use first account to fetch the regions
+	creds = assumeRole(fmt.Sprintf(roleArnTemplate, accounts[0], roleName))
+
 	config := aws.Config{
 		Region:      aws.String(defaultRegion),
-		Credentials: profile.Credentials,
+		Credentials: creds,
 	}
 	con := ec2.New(session.New(), &config)
 

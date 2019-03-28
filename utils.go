@@ -3,6 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"io"
 	"strings"
 )
@@ -10,6 +13,11 @@ import (
 var (
 // @readonly
 )
+
+func assumeRole(roleArn string) *credentials.Credentials {
+	sess := session.Must(session.NewSession())
+	return stscreds.NewCredentials(sess, roleArn)
+}
 
 // Convert []*string to string.
 // If fills nil values with "None"

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"log"
@@ -13,23 +14,24 @@ import (
 
 var (
 	// @readonly
-	defaultRegion        = "us-west-1"
 	awsErrError          = "[ERROR] %+v %+v %+v"
 	awsErrRequestFailure = "[ERROR] %+v %+v %+v %+v"
 )
 
 type EC2List struct {
-	Profile *Profile
+	Credentials *credentials.Credentials
+	Account     string
 }
 
 type Instance struct {
 	Instance ec2.Instance
-	Profile  Profile
+	Account  string
 }
 
 // Returns a pointer to a new EC2List object
-func NewEC2List(profile *Profile) *EC2List {
-	return &EC2List{Profile: profile}
+func NewEC2List(account string) *EC2List {
+	creds := assumeRole(fmt.Sprintf(roleArnTemplate, account, roleName))
+	return &EC2List{Account: account, Credentials: creds}
 }
 
 // Print instances from all regions within account
@@ -49,7 +51,7 @@ func (c *EC2List) fetchRegionInstances(region, next_token string, channel chan I
 	// Connect to region
 	config := aws.Config{
 		Region:      aws.String(region),
-		Credentials: c.Profile.Credentials,
+		Credentials: c.Credentials,
 		MaxRetries:  aws.Int(20),
 	}
 	con := ec2.New(session.New(), &config)
@@ -90,9 +92,9 @@ func (c *EC2List) fetchRegionInstances(region, next_token string, channel chan I
 	for _, r := range res.Reservations {
 		for _, i := range r.Instances {
 			if *service {
-				channel <- Instance{Instance: *i, Profile: *c.Profile}
+				channel <- Instance{Instance: *i, Account: c.Account}
 			} else {
-				s := formatInstanceOutput(c.Profile.Name, *i)
+				s := formatInstanceOutput(c.Account, *i)
 				fmt.Printf("%s", s)
 			}
 		}
@@ -107,18 +109,16 @@ func (c *EC2List) fetchRegionInstances(region, next_token string, channel chan I
 
 // Returns all instances from all regions and accounts
 func fetchInstances() []Instance {
-	var profile *Profile
 	var instances []Instance
 
 	ch_instances := make(chan Instance)
 	defer close(ch_instances)
 
 	// Run go routines to print instances
-	for _, profile_name := range profiles {
+	for _, account := range accounts {
 		// If we didn't load regions already, then fill regions slice
 		ec2_wg.Add(1)
-		profile = NewProfile(profile_name)
-		go NewEC2List(profile).fetchInstances(ch_instances)
+		go NewEC2List(account).fetchInstances(ch_instances)
 	}
 
 	// Retreive results from all goroutines over channel
@@ -136,7 +136,7 @@ func fetchInstances() []Instance {
 
 // Returns formatted string with instance information.
 // This function is for backward compatibility with v1.
-func formatInstanceOutputV1(profile string, i ec2.Instance) string {
+func formatInstanceOutputV1(account string, i ec2.Instance) string {
 	// If there is no tag "Name", return ""
 	var name string
 	for _, keys := range i.Tags {
@@ -153,14 +153,14 @@ func formatInstanceOutputV1(profile string, i ec2.Instance) string {
 		i.InstanceType,
 		i.PublicIpAddress,
 		i.Placement.AvailabilityZone,
-		&profile,
+		&account,
 	}
 
 	return makeFormattedOutput(instance)
 }
 
 // Returns formatted string with instance information.
-func formatInstanceOutput(profile string, i ec2.Instance) string {
+func formatInstanceOutput(account string, i ec2.Instance) string {
 	// If there is no tag "Name", return "None"
 	var name, team, autoscaling_group_name, instance_profile string
 	for _, keys := range i.Tags {
@@ -190,7 +190,7 @@ func formatInstanceOutput(profile string, i ec2.Instance) string {
 		&autoscaling_group_name,
 		i.Placement.AvailabilityZone,
 		i.InstanceType,
-		&profile,
+		&account,
 		i.KeyName,
 		i.ImageId,
 		i.SubnetId,

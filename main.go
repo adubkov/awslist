@@ -2,16 +2,21 @@ package main
 
 import (
 	"flag"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"os"
+	"strings"
 	"sync"
 	"time"
 )
 
 var (
 	// @readonly
-	portMsg     = "Listen port"
-	serviceMsg  = "Run as service"
-	intervalMsg = "Interval to pool data in seconds"
-	compatMsg   = "By default return v1 formatted output"
+	portMsg         = "Listen port"
+	serviceMsg      = "Run as service"
+	intervalMsg     = "Interval to pool data in seconds"
+	compatMsg       = "By default return v1 formatted output"
+	roleName        = "READONLY"
+	roleArnTemplate = "arn:aws:iam::%s:role/%s"
 )
 
 var service *bool
@@ -21,11 +26,13 @@ var interval *int
 var counter int
 var ec2_wg, elb_wg sync.WaitGroup
 
-var profiles []string
 var regions []string
 
 var instances []Instance
 var elbs []Elb
+
+var creds *credentials.Credentials
+var accounts []string
 
 func main() {
 	// Parse arguments
@@ -35,7 +42,8 @@ func main() {
 	interval = flag.Int("interval", 30, intervalMsg)
 	flag.Parse()
 
-	profiles, _ = fetchProfiles()
+	accounts = strings.Split(os.Getenv("AWS_ACCOUNTS"), ",")
+
 	regions, _ = fetchRegions()
 	instances = fetchInstances()
 	elbs = fetchElb()
@@ -47,10 +55,9 @@ func main() {
 		elb_ticker := time.NewTicker(time.Minute * time.Duration(1))
 		general_ticker := time.NewTicker(time.Minute * time.Duration(5))
 
-		go runInstancesPoller(ticker)
-		go runElbPoller(elb_ticker)
-		go runRegionsPoller(general_ticker)
-		go runProfilesPoller(general_ticker)
+		go runInstancesPuller(ticker)
+		go runElbPuller(elb_ticker)
+		go runRegionsPuller(general_ticker)
 
 		// Run http server on specifig port
 		new(HttpServer).Run(*port)

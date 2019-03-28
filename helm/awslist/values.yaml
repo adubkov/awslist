@@ -1,0 +1,28 @@
+replicaCount: 1
+
+aws_accounts: "111111111111" # AWS account. Multiple accounts could be used with comma-separation.
+aws_iam_role: awslist        # IAM Role which will be used to assume READONLY rol in target accounts.
+
+image:
+  repository: 111111111111.dkr.ecr.us-west-2.amazonaws.com
+  namespace: release
+  name: awslist
+  tag: latest
+  pullPolicy: IfNotPresent
+
+ingress:
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # nginx.ingress.kubernetes.io/whitelist-source-range: 1.1.1.1/32
+    kubernetes.io/tls-acme: "true"
+    certmanager.k8s.io/issuer: letsencrypt-staging
+    external-dns.alpha.kubernetes.io/ttl: "60"
+  path: /
+  domain: mydomain.net
+  subdomains:
+    - awslist
+  tls:
+    - secretName: awslist-letsencrypt-staging
+      hosts:
+        - awslist.mydomain.net

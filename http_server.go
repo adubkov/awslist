@@ -24,7 +24,7 @@ func (s *HttpServer) ec2HandlerV1(res http.ResponseWriter, req *http.Request) {
 	res.WriteHeader(statusCode)
 	data := []string{}
 	for _, i := range instances {
-		data = append(data, formatInstanceOutputV1(i.Profile.Name, i.Instance))
+		data = append(data, formatInstanceOutputV1(i.Account, i.Instance))
 	}
 	content := strings.Join(data, "")
 
@@ -51,9 +51,9 @@ func (s *HttpServer) ec2Handler(res http.ResponseWriter, req *http.Request) {
 		for _, i := range instances {
 			switch strings.Trim(params["ver"], "/") {
 			case "v1":
-				data = append(data, formatInstanceOutputV1(i.Profile.Name, i.Instance))
+				data = append(data, formatInstanceOutputV1(i.Account, i.Instance))
 			default:
-				data = append(data, formatInstanceOutput(i.Profile.Name, i.Instance))
+				data = append(data, formatInstanceOutput(i.Account, i.Instance))
 			}
 		}
 		content := strings.Join(data, "")
@@ -69,26 +69,26 @@ func (s *HttpServer) ec2Handler(res http.ResponseWriter, req *http.Request) {
 }
 
 func (s *HttpServer) elbHandler(res http.ResponseWriter, req *http.Request) {
-	var profile, elb string
+	var account, elb string
 	var result []Elb
 
 	params := mux.Vars(req)
 	statusCode := 200
 	res.WriteHeader(statusCode)
 
-	profile = strings.Trim(params["profile"], "/")
+	account = strings.Trim(params["account"], "/")
 	elb = strings.Trim(params["elb"], "/")
 
 	if elb != "" {
 		for _, i := range elbs {
-			if *i.Elb.LoadBalancerName == elb && i.Profile.Name == profile {
+			if *i.Elb.LoadBalancerName == elb && i.Account == account {
 				result = append(result, i)
 				break
 			}
 		}
-	} else if profile != "" {
+	} else if account != "" {
 		for _, i := range elbs {
-			if i.Profile.Name == profile {
+			if i.Account == account {
 				result = append(result, i)
 			}
 		}
@@ -104,9 +104,9 @@ func (s *HttpServer) elbHandler(res http.ResponseWriter, req *http.Request) {
 	default:
 		for _, r := range result {
 			if elb != "" {
-				printText(res, formatElbInstancesOutput(r.Profile.Name, r.Elb))
+				printText(res, formatElbInstancesOutput(r.Account, r.Elb))
 			} else {
-				printText(res, formatElbOutput(r.Profile.Name, r.Elb))
+				printText(res, formatElbOutput(r.Account, r.Elb))
 			}
 		}
 	}
@@ -142,15 +142,16 @@ func (s *HttpServer) Run(port int) {
 	}
 
 	r.HandleFunc(`/favicon.ico`, s.nullHandler)
-	r.HandleFunc(`/{ver:(v1|v2)?/?}{type:/?(ec2/?)?}{format:(.json)?}`, s.ec2Handler)
-	r.HandleFunc(`/{ver:(v2)?/?}{type:/?(elb/?)?}{format:(.json)?}`, s.elbHandler)
-	r.HandleFunc(`/{ver:(v2)?/?}{type:(elb)?}/{profile:([\w\s-]*/?)?}{format:(.json)?}`, s.elbHandler)
-	r.HandleFunc(`/{ver:(v2)?/?}{type:(elb)?}/{profile}/{elb:([\w\s-]*/?)?}{format:(.json)?}`, s.elbHandler)
+	r.HandleFunc(`/{ver:(?:v1|v2)?/?}{type:/?(?:ec2/?)?}{format:(?:.json)?}`, s.ec2Handler)
+	r.HandleFunc(`/{ver:(?:v2)?/?}{type:/?(?:elb/?)?}{format:(?:.json)?}`, s.elbHandler)
+	r.HandleFunc(`/{ver:(?:v2)?/?}{type:(?:elb)?}/{account:(?:[\w\s-]*/?)?}{format:(?:.json)?}`, s.elbHandler)
+	r.HandleFunc(`/{ver:(?:v2)?/?}{type:(?:elb)?}/{account}/{elb:(?:[\w\s-]*/?)?}{format:(?:.json)?}`, s.elbHandler)
 
 	// Indicate port listening
 	log.Printf(runHttpMsg, port)
 
 	// Start listen port or die
 	sockaddr := fmt.Sprintf(":%d", port)
+
 	log.Fatal(http.ListenAndServe(sockaddr, r))
 }
