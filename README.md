@@ -58,3 +58,24 @@ curl -s http://127.0.0.1:8080/elb
 curl -s http://127.0.0.1:8080/elb/{profile_name}
 curl -s http://127.0.0.1:8080/elb/{profile_name}/{elb_name}
 ```
+
+# Install with Helm
+
+* require kiam configured
+
+```
+function apply_namespace() {
+    cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ${1}
+  annotations:
+    iam.amazonaws.com/permitted: .*
+EOF
+}
+
+apply_namespace awslist
+
+helm upgrade -i awslist --namespace awslist ./helm/awslist
+```
